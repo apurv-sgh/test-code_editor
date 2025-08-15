@@ -1,23 +1,38 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./App.css";
 import io from "socket.io-client";
 const socket = io("http://localhost:3000");
 import Editor from "@monaco-editor/react";
 import VideoCall from "./VideoCall";
 import VersionHistory from "./VersionHistory";
+import LandingPage from "./pages/Landing_page";
+import { queryClient } from "./lib/queryClient";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "./components/ui/toaster";
+import { TooltipProvider } from "./components/ui/tooltip";
+import NotFound from "./pages/not-found";
+import {
+  detectFileType,
+  getLanguageDisplayName,
+  getPopularLanguages,
+  getAllSupportedLanguages,
+  isLanguageSupported
+} from "./utils/fileTypeDetection";
 
 const App = () => {
   const [joined, setJoined] = useState(false);
   const [roomId, setRoomId] = useState("");
   const [userName, setUserName] = useState("");
-  const [language, setLanguage] = useState("js");
-  const [code, setCode] = useState("// start coding here...");
+  const [language, setLanguage] = useState("javascript");
+  const [code, setCode] = useState("// Welcome to the collaborative code editor\n// Start coding here...");
   const [copySuccess, setCopySuccess] = useState("");
   const [users, setUsers] = useState([]);
   const [typing, setTyping] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [filename, setFilename] = useState("untitled.js");
+  const [showAllLanguages, setShowAllLanguages] = useState(false);
   const [undoRedoState, setUndoRedoState] = useState({
     canUndo: false,
     canRedo: false,
@@ -28,8 +43,8 @@ const App = () => {
   const [isRedoing, setIsRedoing] = useState(false);
   const [isCreatingCheckpoint, setIsCreatingCheckpoint] = useState(false);
 
-  // Debounce for code changes
   const [codeChangeTimeout, setCodeChangeTimeout] = useState(null);
+
   const [theme, setTheme] = useState("dark");
 
   // Load saved theme on mount
@@ -41,7 +56,6 @@ const App = () => {
     }
   }, []);
 
-  // Handle theme change
   const toggleTheme = () => {
     if (theme === "dark") {
       document.body.classList.add("light-mode");
@@ -55,111 +69,79 @@ const App = () => {
   };
 
   useEffect(() => {
-    socket.on("userJoined", (users) => {
-      setUsers(users);
-    });
-
-    socket.on("codeUpdated", (newCode) => {
-      setCode(newCode);
-    });
-
+    socket.on("userJoined", (users) => setUsers(users));
+    socket.on("codeUpdated", (newCode) => setCode(newCode));
     socket.on("userTyping", (user) => {
       setTyping(`${user.slice(0, 8)} is typing...`);
-      setTimeout(() => {
-        setTyping("");
-      }, 3000);
+      setTimeout(() => setTyping(""), 3000);
     });
-
-    socket.on("languageUpdated", (newLanguage) => {
-      setLanguage(newLanguage);
-    });
-
-    socket.on("chatMessage", ({ userName, message }) => {
-      setChatMessages((prev) => [...prev, { userName, message }]);
-    });
-
-    socket.on("versionAdded", (data) => {
-      console.log("Version added:", data);
-      setUndoRedoState(data.undoRedoState);
-    });
-
+    socket.on("languageUpdated", (newLanguage) => setLanguage(newLanguage));
+    socket.on("chatMessage", ({ userName, message }) =>
+      setChatMessages((prev) => [...prev, { userName, message }])
+    );
+    socket.on("versionAdded", (data) => setUndoRedoState(data.undoRedoState));
     socket.on("codeReverted", (data) => {
       setCode(data.code);
       setLanguage(data.language);
       setUndoRedoState(data.undoRedoState);
-
-      // Reset loading states
       setIsUndoing(false);
       setIsRedoing(false);
 
-      // Show notification about the revert
-
-      setIsUndoing(false);
-      setIsRedoing(false);
+      console.log(
+        `Code ${data.action === "undo"
+          ? "undone"
+          : data.action === "redo"
+            ? "redone"
+            : "reverted"
+        } by ${data.performer}`
+      );
 
       const actionText =
         data.action === "undo"
           ? "undone"
           : data.action === "redo"
-          ? "redone"
-          : "reverted";
+            ? "redone"
+            : "reverted";
       console.log(`Code ${actionText} by ${data.performer}`);
     });
-
     socket.on("undoRedoStateResponse", (response) => {
-      if (response.success) {
-        setUndoRedoState(response.undoRedoState);
-      }
+      if (response.success) setUndoRedoState(response.undoRedoState);
     });
-
     socket.on("checkpointCreated", (data) => {
       setIsCreatingCheckpoint(false);
       console.log(`Checkpoint created by ${data.performer}`);
     });
-
     socket.on("error", (error) => {
       console.error("Socket error:", error);
-
-      // Reset loading states on error
-
       if (error.type === "undo") setIsUndoing(false);
       if (error.type === "redo") setIsRedoing(false);
       if (error.type === "checkpoint") setIsCreatingCheckpoint(false);
     });
 
-    // cleanup
     return () => {
-      socket.off("userJoined");
-      socket.off("codeUpdated");
-      socket.off("userTyping");
-      socket.off("languageUpdated");
-      socket.off("chatMessage");
-      socket.off("versionAdded");
-      socket.off("codeReverted");
-      socket.off("undoRedoStateResponse");
-      socket.off("checkpointCreated");
-      socket.off("error");
+      socket.off();
     };
   }, []);
 
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      socket.emit("leaveRoom");
-    };
-
+    const handleBeforeUnload = () => socket.emit("leaveRoom");
     window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
   const joinRoom = () => {
+    if (!roomId || !userName)
+      return alert("Please enter both Room Id and Your Name");
+    socket.emit("join_room", { roomId, userName });
+    setJoined(true);
+
+    setTimeout(() => {
+      socket.emit("getUndoRedoState", { roomId });
+    }, 1000);
+
     if (roomId && userName) {
       socket.emit("join_room", { roomId, userName });
       setJoined(true);
-
-
-      // Request initial undo/redo state after joining
 
       setTimeout(() => {
         socket.emit("getUndoRedoState", { roomId });
@@ -174,50 +156,39 @@ const App = () => {
     setJoined(false);
     setRoomId("");
     setUserName("");
-    setCode("// start coding here...");
+    setCode("// Welcome to the collaborative code editor\n// Start coding here...");
     setUsers([]);
     setTyping("");
-    setLanguage("js");
+    setLanguage("javascript");
+    setFilename("untitled.js");
+    setShowAllLanguages(false);
     setChatMessages([]);
     setChatInput("");
   };
 
   const copyRoomId = () => {
-    navigator.clipboard
-      .writeText(roomId)
-      .then(() => {
-        setCopySuccess("Copied!");
-        setTimeout(() => setCopySuccess(""), 2000);
-      })
-      .catch((err) => {
-        console.error("Failed to copy: ", err);
-      });
+    navigator.clipboard.writeText(roomId).then(() => {
+      setCopySuccess("Copied!");
+      setTimeout(() => setCopySuccess(""), 2000);
+    });
   };
 
   const handleChange = (newCode) => {
     setCode(newCode);
 
-
-    // Clear existing timeout
-
+    if (codeChangeTimeout) clearTimeout(codeChangeTimeout);
 
     if (codeChangeTimeout) {
       clearTimeout(codeChangeTimeout);
     }
 
-
-    // Debounce code change to avoid too many version saves
-
-
     const newTimeout = setTimeout(() => {
       socket.emit("codeChange", { roomId, code: newCode });
-
-    }, 500); // 500ms delay
+    }, 500);
 
     setCodeChangeTimeout(newTimeout);
 
-    // Immediate typing notification
-
+    // typing notification
     socket.emit("typing", { roomId, userName });
   };
 
@@ -227,19 +198,39 @@ const App = () => {
     socket.emit("languageChange", { roomId, language: newLanguage });
   };
 
-  const handleUndo = () => {
+  const handleFilenameChange = (e) => {
+    const newFilename = e.target.value;
+    setFilename(newFilename);
+
+    // Auto-detect language from filename
+    const detectedLanguage = detectFileType(newFilename);
+    if (detectedLanguage && detectedLanguage !== language && isLanguageSupported(detectedLanguage)) {
+      setLanguage(detectedLanguage);
+      socket.emit("languageChange", { roomId, language: detectedLanguage });
+    }
+  };
+
+  const handleManualLanguageChange = (e) => {
+    const newLanguage = e.target.value;
+    setLanguage(newLanguage);
+    socket.emit("languageChange", { roomId, language: newLanguage });
+
+    // Don't update filename automatically to avoid conflicts
+  };
+
+  const handleUndo = useCallback(() => {
     if (undoRedoState.canUndo && !isUndoing) {
       setIsUndoing(true);
       socket.emit("undo", { roomId });
     }
-  };
+  }, [undoRedoState, isUndoing, roomId]);
 
-  const handleRedo = () => {
+  const handleRedo = useCallback(() => {
     if (undoRedoState.canRedo && !isRedoing) {
       setIsRedoing(true);
       socket.emit("redo", { roomId });
     }
-  };
+  }, [undoRedoState, isRedoing, roomId]);
 
   const createCheckpoint = () => {
     if (!isCreatingCheckpoint) {
@@ -260,182 +251,222 @@ const App = () => {
         }
       }
     };
-
     if (joined) {
       window.addEventListener("keydown", handleKeyDown);
       return () => window.removeEventListener("keydown", handleKeyDown);
     }
-  }, [joined, undoRedoState]);
+  }, [joined, handleUndo, handleRedo]);
 
   const sendChatMessage = (e) => {
     e.preventDefault();
-    if (chatInput.trim()) {
-      const newMessage = { userName, message: chatInput };
-      setChatMessages((prev) => [...prev, newMessage]);
-      socket.emit("chatMessage", { roomId, ...newMessage });
-      setChatInput("");
-    }
+    if (!chatInput.trim()) return;
+    const newMessage = { userName, message: chatInput };
+    setChatMessages((prev) => [...prev, newMessage]);
+    socket.emit("chatMessage", { roomId, ...newMessage });
+    setChatInput("");
   };
 
+
+  const handleJoinFromLanding = (newRoomId, newUserName) => {
+    setRoomId(newRoomId);
+    setUserName(newUserName);
+    socket.emit("join_room", { roomId: newRoomId, userName: newUserName });
+    setJoined(true);
+
+    // Request initial undo/redo state after joining
+    setTimeout(() => {
+      socket.emit("getUndoRedoState", { roomId: newRoomId });
+    }, 1000);
+  };
+
+
   if (!joined) {
-    return (
-      <div className="join-container">
-        <div className="join-form">
-          <h1>Join Code Room</h1>
-          <input
-            type="text"
-            placeholder="Room Id"
-            value={roomId}
-            onChange={(e) => setRoomId(e.target.value)}
-          />
-          <input
-            type="text"
-            placeholder="Your Name"
-            value={userName}
-            onChange={(e) => setUserName(e.target.value)}
-          />
-          <button onClick={joinRoom}>Join Room</button>
-        </div>
-      </div>
-    );
+    return <LandingPage onJoinRoom={handleJoinFromLanding} />;
   }
 
   return (
-    <div className="editor-container">
-      <div className="sidebar">
-        <button onClick={toggleTheme} className="theme-toggle-btn">
-          {theme === "light" ? "☀️ Light Mode" : "🌙 Dark Mode"}
-        </button>
-        <div className="room-info">
-          <h2>Code Room: {roomId}</h2>
-          <button onClick={copyRoomId}> Copy Id</button>
-          {copySuccess && <span className="copy-success">{copySuccess}</span>}
-        </div>
-        <h3>Users in Room:</h3>
-        <ul>
-          {users.map((user, index) => (
-            <li key={index}>{user.slice(0, 8)}</li>
-          ))}
-        </ul>
-        <p className="typing-indicator">{typing}</p>
-        <select
-          className="language-selector"
-          value={language}
-          onChange={handleLanguageChange}
-        >
-          <option value="js">js</option>
-          <option value="python">python</option>
-          <option value="java">java</option>
-        </select>
-        <button className="leave-button" onClick={leaveRoom}>
-          Leave Room
-        </button>
-
-        <div className="version-controls">
-          <h3>Version History</h3>
-          <div className="version-buttons">
-            <button
-              className={`version-btn undo-btn ${
-                !undoRedoState.canUndo || isUndoing ? "disabled" : ""
-              } ${isUndoing ? "loading" : ""}`}
-              onClick={handleUndo}
-              disabled={!undoRedoState.canUndo || isUndoing}
-              title="Undo (Ctrl+Z)"
-            >
-              {isUndoing ? "Undoing..." : "Undo"}
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <div className="editor-container">
+          <div className="sidebar">
+            <button onClick={toggleTheme} className="theme-toggle-btn">
+              {theme === "light" ? "☀️ Light Mode" : "🌙 Dark Mode"}
             </button>
-            <button
-              className={`version-btn redo-btn ${
-                !undoRedoState.canRedo || isRedoing ? "disabled" : ""
-              } ${isRedoing ? "loading" : ""}`}
-              onClick={handleRedo}
-              disabled={!undoRedoState.canRedo || isRedoing}
-              title="Redo (Ctrl+Y)"
-            >
-              {isRedoing ? "Redoing..." : "Redo"}
-            </button>
-          </div>
-          <div className="version-info">
-            <span className="version-count">
-              {undoRedoState.currentVersionIndex + 1} /{" "}
-              {undoRedoState.totalVersions}
-            </span>
-          </div>
-          <button
-            className="version-btn history-btn"
-            onClick={() => setShowVersionHistory(true)}
-            title="View version history"
-          >
-            History
-          </button>
-          <button
-            className={`version-btn checkpoint-btn ${
-              isCreatingCheckpoint ? "loading" : ""
-            }`}
-            onClick={createCheckpoint}
-            disabled={isCreatingCheckpoint}
-            title="Create checkpoint"
-          >
-            {isCreatingCheckpoint ? "Creating..." : "Checkpoint"}
-          </button>
-        </div>
-      </div>
-
-      <div className="editor-wrapper">
-        <Editor
-          height={"100%"}
-          defaultLanguage={language}
-          language={language}
-          value={code}
-          onChange={handleChange}
-          theme="vs-dark"
-          options={{
-            minimap: { enabled: false },
-            fontSize: 14
-          }}
-        />
-        <VideoCall
-          socket={socket}
-          roomId={roomId}
-          userName={userName}
-          joined={joined}
-        />
-      </div>
-
-      <div className="chat-panel">
-        <div className="chat-messages">
-          {chatMessages.map((msg, idx) => (
-            <div key={idx} className="chat-message">
-              <span className="chat-user">{msg.userName.slice(0, 8)}:</span>{" "}
-              {msg.message}
+            <div className="room-info">
+              <h2>Code Room: {roomId}</h2>
+              <button onClick={copyRoomId}> Copy Id</button>
+              {copySuccess && <span className="copy-success">{copySuccess}</span>}
             </div>
-          ))}
-        </div>
-        <form className="chat-input-form" onSubmit={sendChatMessage}>
-          <input
-            className="chat-input"
-            type="text"
-            placeholder="Type a message..."
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            maxLength={200}
+            <h3>Users in Room:</h3>
+            <ul>
+              {users.map((user, index) => (
+                <li key={index}>{user.slice(0, 8)}</li>
+              ))}
+            </ul>
+            <p className="typing-indicator">{typing}</p>
+
+            <div className="file-controls">
+              <h3>File & Language</h3>
+              <div className="filename-input-group">
+                <label htmlFor="filename">Filename:</label>
+                <input
+                  id="filename"
+                  type="text"
+                  className="filename-input"
+                  value={filename}
+                  onChange={handleFilenameChange}
+                  placeholder="e.g., main.js, script.py"
+                />
+              </div>
+
+              <div className="language-selector-group">
+                <label htmlFor="language">Language:</label>
+                <select
+                  id="language"
+                  className="language-selector"
+                  value={language}
+                  onChange={handleManualLanguageChange}
+                >
+                  <optgroup label="Popular Languages">
+                    {getPopularLanguages().map((lang) => (
+                      <option key={lang.id} value={lang.id}>
+                        {lang.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {showAllLanguages && (
+                    <optgroup label="All Languages">
+                      {getAllSupportedLanguages()
+                        .filter(lang => !getPopularLanguages().some(popular => popular.id === lang.id))
+                        .map((lang) => (
+                          <option key={lang.id} value={lang.id}>
+                            {lang.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+                </select>
+                <button
+                  type="button"
+                  className="show-all-languages-btn"
+                  onClick={() => setShowAllLanguages(!showAllLanguages)}
+                >
+                  {showAllLanguages ? "Show Less" : "Show All"}
+                </button>
+              </div>
+
+              <div className="language-info">
+                <small>
+                  Current: <strong>{getLanguageDisplayName(language)}</strong>
+                </small>
+              </div>
+            </div>
+            <button className="leave-button" onClick={leaveRoom}>
+              Leave Room
+            </button>
+
+            <div className="version-controls">
+              <h3>Version History</h3>
+              <div className="version-buttons">
+                <button
+                  className={`version-btn undo-btn ${!undoRedoState.canUndo || isUndoing ? "disabled" : ""
+                    } ${isUndoing ? "loading" : ""}`}
+                  onClick={handleUndo}
+                  disabled={!undoRedoState.canUndo || isUndoing}
+                  title="Undo (Ctrl+Z)"
+                >
+                  {isUndoing ? "Undoing..." : "Undo"}
+                </button>
+                <button
+                  className={`version-btn redo-btn ${!undoRedoState.canRedo || isRedoing ? "disabled" : ""
+                    } ${isRedoing ? "loading" : ""}`}
+                  onClick={handleRedo}
+                  disabled={!undoRedoState.canRedo || isRedoing}
+                  title="Redo (Ctrl+Y)"
+                >
+                  {isRedoing ? "Redoing..." : "Redo"}
+                </button>
+              </div>
+              <div className="version-info">
+                <span className="version-count">
+                  {undoRedoState.currentVersionIndex + 1} /{" "}
+                  {undoRedoState.totalVersions}
+                </span>
+              </div>
+              <button
+                className="version-btn history-btn"
+                onClick={() => setShowVersionHistory(true)}
+                title="View version history"
+              >
+                History
+              </button>
+              <button
+                className={`version-btn checkpoint-btn ${isCreatingCheckpoint ? "loading" : ""
+                  }`}
+                onClick={createCheckpoint}
+                disabled={isCreatingCheckpoint}
+                title="Create checkpoint"
+              >
+                {isCreatingCheckpoint ? "Creating..." : "Checkpoint"}
+              </button>
+            </div>
+          </div>
+
+          <div className="editor-wrapper">
+            <Editor
+              height={"100%"}
+              defaultLanguage={language}
+              language={language}
+              value={code}
+              onChange={handleChange}
+              theme="vs-dark"
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+              }}
+            />
+            <VideoCall
+              socket={socket}
+              roomId={roomId}
+              userName={userName}
+              joined={joined}
+            />
+          </div>
+
+          <div className="chat-panel">
+            <div className="chat-messages">
+              {chatMessages.map((msg, idx) => (
+                <div key={idx} className="chat-message">
+                  <span className="chat-user">{msg.userName.slice(0, 8)}:</span>{" "}
+                  {msg.message}
+                </div>
+              ))}
+            </div>
+            <form className="chat-input-form" onSubmit={sendChatMessage}>
+              <input
+                className="chat-input"
+                type="text"
+                placeholder="Type a message..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                maxLength={200}
+              />
+              <button type="submit" className="chat-send-btn">
+                Send
+              </button>
+            </form>
+          </div>
+
+          <VersionHistory
+            socket={socket}
+            roomId={roomId}
+            isOpen={showVersionHistory}
+            onClose={() => setShowVersionHistory(false)}
           />
-          <button type="submit" className="chat-send-btn">
-            Send
-          </button>
-        </form>
-      </div>
-
-
-      {/* Version History Modal */}
-
-      <VersionHistory
-        socket={socket}
-        roomId={roomId}
-        isOpen={showVersionHistory}
-        onClose={() => setShowVersionHistory(false)}
-      />
-    </div>
+        </div>
+      </TooltipProvider>
+    </QueryClientProvider>
   );
 };
 
