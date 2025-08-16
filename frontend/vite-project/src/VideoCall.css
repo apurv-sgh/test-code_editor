@@ -1,9 +1,4 @@
-/* ===============================
-   THEME VARIABLES
-=================================*/
-/* ===============================
-   THEME VARIABLES
-=================================*/
+/* =============================== THEME VARIABLES =================================*/
 :root {
   /* Dark mode (default) */
   --bg-color: #161719;
@@ -21,23 +16,20 @@
 
 /* Light mode overrides */
 .light-mode {
-  --bg-color: #cca3ec;
-  --text-color: #fff;
+  --bg-color: #ffffff;
+  --text-color: #222;
   /* Keep same accent colors as dark mode */
   --accent-color: #6725d9;
   --accent-hover: #793be4;
   --video-bg: #6725d9;
-  --placeholder-bg: #cca3ec;
-  --label-color: #cca3ec;
+  --placeholder-bg: #b3d4fc;
+  --label-color: #555;
   --shadow-color: rgba(0, 0, 0, 0.2);
   --mic-bg: #ddd;
   --mic-gradient: linear-gradient(90deg, #4a90e2 0%, #50e3c2 100%);
-  --border-color: #8a6feb;
+  --border-color: #ccc;
 }
-
-/* ===============================
-   STYLES
-=================================*/
+/* =============================== STYLES =================================*/
 .video-call-panel {
   border: 1px solid var(--border-color);
   position: absolute;
@@ -53,7 +45,6 @@
   cursor: grab;
   user-select: none;
 }
-
 .video-call-header {
   cursor: grab;
   background: var(--accent-color);
@@ -63,14 +54,12 @@
   text-align: center;
   color: var(--text-color);
 }
-
 .video-call-controls {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
   justify-content: center;
 }
-
 .video-call-controls button {
   background: var(--accent-color);
   color: var(--text-color);
@@ -81,18 +70,15 @@
   cursor: pointer;
   transition: background 0.2s;
 }
-
 .video-call-controls button:hover {
   background: var(--accent-hover);
 }
-
 .video-call-videos {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   justify-content: center;
 }
-
 .video-tile {
   background: var(--video-bg);
   border-top-left-radius: 10rem;
@@ -108,7 +94,6 @@
   justify-content: flex-end;
   position: relative;
 }
-
 .video-tile video {
   width: 90px;
   height: 70px;
@@ -116,7 +101,6 @@
   background: #000;
   object-fit: cover;
 }
-
 .video-placeholder {
   width: 82px;
   height: 67px;
@@ -131,14 +115,12 @@
   border-bottom-right-radius: 1rem;
   font-size: 2.5rem;
 }
-
 .video-label {
   font-size: 0.85rem;
   margin-top: 0.2rem;
   text-align: center;
   color: var(--label-color);
 }
-
 .mic-volume-bar {
   display: inline-block;
   vertical-align: middle;
@@ -149,7 +131,6 @@
   margin-left: 6px;
   overflow: hidden;
 }
-
 .mic-volume-fill {
   display: block;
   height: 100%;
