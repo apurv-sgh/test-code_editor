@@ -9,27 +9,23 @@ import { fileURLToPath } from "url";
 import cors from "cors";
 
 // Import configurations
-import { serverConfig, staticConfig } from "./config/server.js";
+import { serverConfig, staticConfig } from './config/server.js';
 
 // Import routes
-import httpRoutes from "./routes/httpRoutes.js";
-import socketRoutes from "./routes/socketRoutes.js";
+import httpRoutes from './routes/httpRoutes.js';
+import socketRoutes from './routes/socketRoutes.js';
 
 // Import middleware
-import { requestLogger } from "./middleware/logger.js";
-import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
+import { requestLogger } from './middleware/logger.js';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
 // Initialize Express app
 const app = express();
 const server = http.createServer(app);
 
-// Increase server timeouts for Render stability
-server.keepAliveTimeout = 120000; // 120s
-server.headersTimeout = 120000;
-
 // Initialize Socket.IO with CORS configuration
 const io = new Server(server, {
-  cors: serverConfig.socket.cors,
+  cors: serverConfig.socket.cors
 });
 
 // Middleware setup
@@ -39,12 +35,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(requestLogger);
 
 // API routes
-app.use("/api", httpRoutes);
-
-// Health check route for Render
-app.get("/", (req, res) => {
-  res.send("✅ Collaborative Code Editor backend is running on Render");
-});
+app.use('/', httpRoutes);
 
 // Serve static files from frontend build
 const __filename = fileURLToPath(import.meta.url);
@@ -64,8 +55,8 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // Start server
-const port = process.env.PORT || serverConfig.port || 10000;
-server.listen(port, "0.0.0.0", () => {
+const port = serverConfig.port;
+server.listen(port, () => {
   console.log(`🚀 Collaborative Code Editor Server is running on port ${port}`);
   console.log(`📊 API Documentation: http://localhost:${port}/api/docs`);
   console.log(`🏥 Health Check: http://localhost:${port}/health`);
@@ -74,20 +65,20 @@ server.listen(port, "0.0.0.0", () => {
 });
 
 // Graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("SIGTERM received, shutting down gracefully");
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
   server.close(() => {
-    console.log("Server closed");
+    console.log('Server closed');
     process.exit(0);
   });
 });
 
-process.on("SIGINT", () => {
-  console.log("SIGINT received, shutting down gracefully");
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down gracefully');
   server.close(() => {
-    console.log("Server closed");
+    console.log('Server closed');
     process.exit(0);
   });
 });
 
-export default app;
+export default app; 
