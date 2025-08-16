@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import "./App.css";
 import io from "socket.io-client";
 const socket = io("http://localhost:3000");
@@ -21,6 +21,7 @@ import {
   getAllSupportedLanguages,
   isLanguageSupported 
 } from "./utils/fileTypeDetection";
+import * as monaco from 'monaco-editor';
 
 const App = () => {
   const [joined, setJoined] = useState(false);
@@ -64,6 +65,19 @@ const App = () => {
   const [theme, setTheme] = useState("dark");
 
   const placeholderText = '  Start typing here...';
+
+  // Scroll Control State
+  const messagesEndRef = useRef(null);
+
+   // auto-scroll effect
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollTo({
+        top: messagesEndRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [chatMessages]);
 
   // Load saved theme on mount
   useEffect(() => {
@@ -109,15 +123,16 @@ const App = () => {
     socket.on("filesUpdated", ({ files: newFiles, activeFile: newActiveFile }) => {
       setFiles(newFiles);
       setActiveFile(newActiveFile);
-      
       // Update current file content and language
       const currentFile = newFiles.find(f => f.filename === newActiveFile);
       if (currentFile) {
         setCurrentFileContent(currentFile.code);
-        setCurrentFileLanguage(currentFile.language);
+        const detectedLang = detectFileType(currentFile.filename);
+        setCurrentFileLanguage(detectedLang);
         setCode(currentFile.code);
-        setLanguage(currentFile.language);
+        setLanguage(detectedLang);
         setFilename(currentFile.filename);
+        console.log('[DEBUG] File switched:', currentFile.filename, 'Detected language:', detectedLang);
       }
     });
 
@@ -496,7 +511,7 @@ const App = () => {
     if (!chatInput.trim()) return;
     const newMessage = { userName, message: chatInput };
     setChatMessages((prev) => [...prev, newMessage]);
-    socket.emit("chatMessage", { roomId, ...newMessage });
+    // socket.emit("chatMessage", { roomId, ...newMessage });
     setChatInput("");
   };
 
@@ -513,8 +528,112 @@ const App = () => {
 
   const handleEditorOnMount = (editor, monaco) => {
     const placeholderEl = document.querySelector('.monaco-placeholder');
-    placeholderEl.style.display = 'block';
+    if (placeholderEl) placeholderEl.style.display = 'block';
     editor.focus();
+
+    // Debug: Log current language
+    console.log('[DEBUG] Editor language:', editor.getModel().getLanguageId());
+
+    // Register completion providers for all supported languages
+    if (monaco.languages && monaco.languages.registerCompletionItemProvider) {
+      const languageSuggestions = {
+        javascript: [
+          { label: 'for', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'for (let i = 0; i < arr.length; i++) {\n  // ...\n}', detail: 'JavaScript for loop' },
+          { label: 'forEach', kind: monaco.languages.CompletionItemKind.Method, insertText: 'arr.forEach(item => {\n  // ...\n});', detail: 'JavaScript Array forEach' },
+          { label: 'map', kind: monaco.languages.CompletionItemKind.Method, insertText: 'arr.map(item => item * 2);', detail: 'JavaScript Array map' },
+          { label: 'filter', kind: monaco.languages.CompletionItemKind.Method, insertText: 'arr.filter(item => item > 0);', detail: 'JavaScript Array filter' },
+          { label: 'reduce', kind: monaco.languages.CompletionItemKind.Method, insertText: 'arr.reduce((acc, item) => acc + item, 0);', detail: 'JavaScript Array reduce' },
+          { label: 'async/await', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'async function fetchData() {\n  try {\n    const res = await fetch(url);\n    const data = await res.json();\n  } catch (e) {\n    // ...\n  }\n}', detail: 'JavaScript async/await' },
+          { label: 'class', kind: monaco.languages.CompletionItemKind.Class, insertText: 'class MyClass {\n  constructor() {\n    // ...\n  }\n}', detail: 'JavaScript class' },
+          { label: 'Promise', kind: monaco.languages.CompletionItemKind.Class, insertText: 'new Promise((resolve, reject) => {\n  // ...\n});', detail: 'JavaScript Promise' },
+          { label: 'setTimeout', kind: monaco.languages.CompletionItemKind.Function, insertText: 'setTimeout(() => {\n  // ...\n}, 1000);', detail: 'JavaScript setTimeout' },
+          { label: 'console.log', kind: monaco.languages.CompletionItemKind.Function, insertText: 'console.log()', detail: 'JavaScript log' },
+        ],
+        typescript: [
+          { label: 'interface', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'interface Name {\n  // ...\n}', detail: 'TypeScript interface' },
+          { label: 'type', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'type Name = {\n  // ...\n}', detail: 'TypeScript type' },
+          { label: 'enum', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'enum MyEnum {\n  VALUE1,\n  VALUE2\n}', detail: 'TypeScript enum' },
+          { label: 'generic', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'function identity<T>(arg: T): T {\n  return arg;\n}', detail: 'TypeScript generic function' },
+        ],
+        python: [
+          { label: 'for', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'for i in range(n):\n    # ...', detail: 'Python for loop' },
+          { label: 'while', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'while condition:\n    # ...', detail: 'Python while loop' },
+          { label: 'def', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'def function_name(params):\n    # ...', detail: 'Python function' },
+          { label: 'class', kind: monaco.languages.CompletionItemKind.Class, insertText: 'class MyClass:\n    def __init__(self):\n        pass', detail: 'Python class' },
+          { label: 'list comprehension', kind: monaco.languages.CompletionItemKind.Snippet, insertText: '[x for x in iterable]', detail: 'Python list comprehension' },
+          { label: 'lambda', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'lambda x: x * 2', detail: 'Python lambda' },
+          { label: 'import', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'import module', detail: 'Python import' },
+          { label: 'print', kind: monaco.languages.CompletionItemKind.Function, insertText: 'print()', detail: 'Python print' },
+        ],
+        java: [
+          { label: 'for', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'for (int i = 0; i < n; i++) {\n    // ...\n}', detail: 'Java for loop' },
+          { label: 'while', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'while (condition) {\n    // ...\n}', detail: 'Java while loop' },
+          { label: 'public static void main', kind: monaco.languages.CompletionItemKind.Function, insertText: 'public static void main(String[] args) {\n    // ...\n}', detail: 'Java main method' },
+          { label: 'System.out.println', kind: monaco.languages.CompletionItemKind.Function, insertText: 'System.out.println()', detail: 'Java print' },
+          { label: 'ArrayList', kind: monaco.languages.CompletionItemKind.Class, insertText: 'ArrayList<Type> list = new ArrayList<>();', detail: 'Java ArrayList' },
+          { label: 'HashMap', kind: monaco.languages.CompletionItemKind.Class, insertText: 'HashMap<Key, Value> map = new HashMap<>();', detail: 'Java HashMap' },
+        ],
+        c: [
+          { label: 'for', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'for (int i = 0; i < n; i++) {\n    // ...\n}', detail: 'C for loop' },
+          { label: 'while', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'while (condition) {\n    // ...\n}', detail: 'C while loop' },
+          { label: 'printf', kind: monaco.languages.CompletionItemKind.Function, insertText: 'printf("%d", value);', detail: 'C printf' },
+          { label: 'struct', kind: monaco.languages.CompletionItemKind.Class, insertText: 'struct MyStruct {\n    int a;\n    float b;\n};', detail: 'C struct' },
+          { label: 'typedef', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'typedef int myint;', detail: 'C typedef' },
+        ],
+        cpp: [
+          { label: '#include', kind: monaco.languages.CompletionItemKind.Keyword, insertText: '#include <iostream>', detail: 'C++ include directive' },
+          { label: 'for', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'for (int i = 0; i < n; ++i) {\n    // ...\n}', detail: 'C++ for loop' },
+          { label: 'while', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'while (condition) {\n    // ...\n}', detail: 'C++ while loop' },
+          { label: 'vector', kind: monaco.languages.CompletionItemKind.Class, insertText: 'std::vector<int> v;', detail: 'C++ STL vector' },
+          { label: 'map', kind: monaco.languages.CompletionItemKind.Class, insertText: 'std::map<int, int> m;', detail: 'C++ STL map' },
+          { label: 'set', kind: monaco.languages.CompletionItemKind.Class, insertText: 'std::set<int> s;', detail: 'C++ STL set' },
+          { label: 'unordered_map', kind: monaco.languages.CompletionItemKind.Class, insertText: 'std::unordered_map<int, int> um;', detail: 'C++ STL unordered_map' },
+          { label: 'class', kind: monaco.languages.CompletionItemKind.Class, insertText: 'class MyClass {\npublic:\n    MyClass() {}\n};', detail: 'C++ class' },
+          { label: 'template', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'template <typename T>\nT add(T a, T b) {\n    return a + b;\n}', detail: 'C++ template function' },
+        ],
+        html: [
+          { label: 'div', kind: monaco.languages.CompletionItemKind.Snippet, insertText: '<div>\n  <!-- ... -->\n</div>', detail: 'HTML div' },
+          { label: 'span', kind: monaco.languages.CompletionItemKind.Snippet, insertText: '<span>\n  <!-- ... -->\n</span>', detail: 'HTML span' },
+          { label: 'form', kind: monaco.languages.CompletionItemKind.Snippet, insertText: '<form>\n  <input type="text" />\n</form>', detail: 'HTML form' },
+          { label: 'img', kind: monaco.languages.CompletionItemKind.Snippet, insertText: '<img src="" alt="" />', detail: 'HTML image' },
+        ],
+        css: [
+          { label: 'display', kind: monaco.languages.CompletionItemKind.Property, insertText: 'display: flex;', detail: 'CSS display property' },
+          { label: 'color', kind: monaco.languages.CompletionItemKind.Property, insertText: 'color: #000;', detail: 'CSS color property' },
+          { label: 'margin', kind: monaco.languages.CompletionItemKind.Property, insertText: 'margin: 0;', detail: 'CSS margin property' },
+          { label: 'padding', kind: monaco.languages.CompletionItemKind.Property, insertText: 'padding: 0;', detail: 'CSS padding property' },
+        ],
+        json: [
+          { label: 'key', kind: monaco.languages.CompletionItemKind.Property, insertText: '"key": "value"', detail: 'JSON key-value' },
+          { label: 'array', kind: monaco.languages.CompletionItemKind.Property, insertText: '"items": [1, 2, 3]', detail: 'JSON array' },
+        ],
+        markdown: [
+          { label: 'header', kind: monaco.languages.CompletionItemKind.Snippet, insertText: '# Header', detail: 'Markdown header' },
+          { label: 'list', kind: monaco.languages.CompletionItemKind.Snippet, insertText: '- item', detail: 'Markdown list' },
+          { label: 'code', kind: monaco.languages.CompletionItemKind.Snippet, insertText: '```js\nconsole.log("Hello World");\n```', detail: 'Markdown code block' },
+        ],
+        sql: [
+          { label: 'SELECT', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'SELECT * FROM table;', detail: 'SQL SELECT' },
+          { label: 'INSERT', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'INSERT INTO table VALUES (...);', detail: 'SQL INSERT' },
+          { label: 'JOIN', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'SELECT * FROM table1 JOIN table2 ON table1.id = table2.id;', detail: 'SQL JOIN' },
+        ],
+        // Add more languages and suggestions as needed
+      };
+
+      Object.keys(languageSuggestions).forEach(lang => {
+        monaco.languages.registerCompletionItemProvider(lang, {
+          provideCompletionItems: function(model, position) {
+            const word = model.getWordUntilPosition(position);
+            console.log(`[DEBUG] Completion requested for word:`, word, 'in language:', lang);
+            const suggestions = languageSuggestions[lang] || [];
+            console.log('[DEBUG] Suggestions returned:', suggestions);
+            return { suggestions };
+          }
+        });
+      });
+    } else {
+      console.log('[DEBUG] Monaco completion provider API not available');
+    }
   };
 
    const handleJoinFromLanding = (newRoomId, newUserName) => {
@@ -715,7 +834,7 @@ const App = () => {
         }
         chatPanel={
           <div className="chat-panel-content">
-            <div className="chat-messages">
+            <div className="chat-messages" ref={messagesEndRef} style={{ overflowY: "auto", maxHeight: "100%" }}>
               {chatMessages.map((msg, idx) => (
                 <div key={idx} className="chat-message">
                   <span className="chat-user">{msg.userName.slice(0, 8)}:</span>{" "}
