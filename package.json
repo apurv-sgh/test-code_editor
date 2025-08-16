@@ -2,12 +2,13 @@
   "name": "codeeditor",
   "version": "1.0.0",
   "description": "",
+  "main": "index.js",
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
-   "build": "npm install --prefix frontend/vite-project && npm run build --prefix frontend/vite-project"
+    "build": "npm --prefix frontend/vite-project install && npm --prefix frontend/vite-project run build"
   },
   "keywords": [],
   "author": "",
