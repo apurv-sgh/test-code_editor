@@ -1,6 +1,6 @@
 // Server configuration settings
 export const serverConfig = {
-  port: process.env.PORT || 3000,
+  port: process.env.PORT || 10000,
   cors: {
     origin: "*", // In production, specify exact origins
     methods: ["GET", "POST"],
