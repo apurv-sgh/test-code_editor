@@ -16,7 +16,7 @@ export const serverConfig = {
 
 // Static file serving configuration
 export const staticConfig = {
-  path: "../frontend/vite-project/dist",
+  path: "../frontend/vite-project/",
   options: {
     index: "index.html"
   }
