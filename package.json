@@ -7,8 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
-    "build": "npm --prefix frontend/vite-project run build"
-
+   "build": "npm install --prefix frontend/vite-project && npm run build --prefix frontend/vite-project"
   },
   "keywords": [],
   "author": "",
